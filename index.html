@@ -4,116 +4,90 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Помодоро — таймер и заметка</title>
+<title>Таймер</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  :root { --accent:#1f6feb; --bg:#f5f7fa; --ok:#2e9e5b; --muted:#8a94a6; --warn:#e0a32e; --err:#c0392b; }
+  :root { --accent:#1f6feb; --bg:#f5f7fa; --ok:#2e9e5b; --muted:#c2c8d2; --warn:#e0a32e; --err:#c0392b; }
   html, body { height: 100%; }
   body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg);
          color:#2b3038; min-height:100vh; display:flex; flex-direction:column; align-items:center;
-         padding:18px 14px 30px; gap:16px; }
-  .bar { width:100%; max-width:900px; display:flex; justify-content:space-between; align-items:center; }
-  .bar .brand { font-weight:700; color:#3a414b; }
-  .bar a, .bar button.link { color:var(--muted); font-size:.8rem; text-decoration:none; background:none;
-         border:none; cursor:pointer; }
-  .bar a:hover, .bar button.link:hover { text-decoration:underline; }
-  .card { background:#fff; border-radius:16px; box-shadow:0 2px 16px rgba(0,0,0,.07); width:100%; max-width:900px; }
+         padding:18px 14px 30px; gap:16px; position:relative; }
+  .card { background:#fff; border-radius:16px; box-shadow:0 2px 16px rgba(0,0,0,.07); width:100%; max-width:900px; position:relative; }
   .timer { padding:24px 26px; text-align:center; }
-  .modes { display:flex; gap:8px; justify-content:center; margin-bottom:16px; flex-wrap:wrap; }
-  .mode { border:1px solid #e1e5ec; background:#fff; color:#55606f; padding:7px 16px; border-radius:999px;
-          font-size:.85rem; cursor:pointer; }
+  .modes { display:flex; gap:8px; justify-content:center; margin-bottom:16px; }
+  .mode { border:1px solid #e1e5ec; background:#fff; color:#55606f; width:48px; padding:7px 0; border-radius:999px;
+          font-size:.9rem; cursor:pointer; }
   .mode.active { background:var(--accent); color:#fff; border-color:var(--accent); }
   .display { font-variant-numeric:tabular-nums; font-weight:700; font-size:clamp(4rem,16vw,7rem); line-height:1;
              margin:4px 0 16px; color:#20262e; }
   .display.running { color:var(--accent); }
-  .controls { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
-  .btn { border:none; border-radius:10px; padding:12px 26px; font-size:1rem; font-weight:600; cursor:pointer; }
-  .btn-primary { background:var(--accent); color:#fff; min-width:130px; }
-  .btn-ghost { background:#eef1f6; color:#55606f; }
-  .count { margin-top:13px; font-size:.8rem; color:var(--muted); }
+  .controls { display:flex; gap:12px; justify-content:center; }
+  .ico { border:none; border-radius:50%; width:58px; height:58px; font-size:1.4rem; cursor:pointer; line-height:1;
+         display:flex; align-items:center; justify-content:center; }
+  .ico.primary { background:var(--accent); color:#fff; }
+  .ico.ghost { background:#eef1f6; color:#55606f; }
 
-  .note { padding:16px 18px 18px; flex:1; display:flex; flex-direction:column; min-height:300px; }
-  .note-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:9px; }
-  .note-head h2 { font-size:.95rem; font-weight:600; color:#3a414b; }
-  .status { font-size:.78rem; color:var(--muted); display:flex; align-items:center; gap:6px; }
-  .status .dot { width:8px; height:8px; border-radius:50%; background:var(--muted); }
-  .status.ok .dot{background:var(--ok)} .status.ok{color:var(--ok)}
-  .status.saving .dot{background:var(--warn)} .status.err .dot{background:var(--err)} .status.err{color:var(--err)}
+  .note { padding:16px; flex:1; display:flex; min-height:300px; }
   textarea#note { flex:1; width:100%; resize:vertical; min-height:300px; border:1px solid #e1e5ec; border-radius:10px;
          padding:14px 16px; font-size:.95rem; line-height:1.5; outline:none; color:#2b3038; background:#fcfdff;
          font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; white-space:pre; overflow:auto; }
   textarea#note:focus { border-color:var(--accent); background:#fff; }
-  textarea#note:disabled { background:#f1f3f6; color:#aab; }
+  textarea#note:disabled { background:#f1f3f6; }
 
-  .setup { padding:18px 20px; }
-  .setup h2 { font-size:1rem; margin-bottom:8px; }
-  .setup p { font-size:.88rem; color:#55606f; margin-bottom:10px; line-height:1.5; }
-  .setup input { width:100%; padding:11px 13px; border:1px solid #d8dde6; border-radius:8px; font-size:.95rem;
-         margin-bottom:10px; font-family:ui-monospace,Menlo,Consolas,monospace; }
-  .setup .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-  .hint { margin-top:8px; font-size:.74rem; color:var(--muted); }
+  .dot { position:absolute; top:12px; right:14px; width:9px; height:9px; border-radius:50%; background:var(--muted); }
+  .dot.ok{background:var(--ok)} .dot.saving{background:var(--warn)} .dot.err{background:var(--err)}
+
+  .setup { padding:16px; display:flex; gap:10px; align-items:center; }
+  .setup input { flex:1; padding:11px 13px; border:1px solid #d8dde6; border-radius:8px; font-size:.95rem;
+         font-family:ui-monospace,Menlo,Consolas,monospace; outline:none; }
+  .setup input:focus { border-color:var(--accent); }
+  .setup .ico { width:44px; height:44px; font-size:1.1rem; }
+
+  .gear { position:absolute; top:14px; right:16px; background:none; border:none; cursor:pointer; font-size:1rem;
+          color:#cfd5de; line-height:1; }
+  .gear:hover { color:#9aa3b0; }
   .hidden { display:none !important; }
 </style>
 </head>
 <body>
-  <div class="bar">
-    <span class="brand">🍅 Помодоро</span>
-    <button class="link" id="forgetBtn">сменить токен</button>
-  </div>
+  <button class="gear hidden" id="forgetBtn" aria-label="token">⚙</button>
 
-  <!-- Timer -->
   <div class="card timer">
     <div class="modes">
-      <button class="mode active" data-min="25">Работа · 25</button>
-      <button class="mode" data-min="5">Перерыв · 5</button>
-      <button class="mode" data-min="15">Большой · 15</button>
+      <button class="mode active" data-min="25">25</button>
+      <button class="mode" data-min="5">5</button>
+      <button class="mode" data-min="15">15</button>
     </div>
     <div class="display" id="display">25:00</div>
     <div class="controls">
-      <button class="btn btn-primary" id="startBtn">Старт</button>
-      <button class="btn btn-ghost" id="resetBtn">Сброс</button>
+      <button class="ico primary" id="startBtn" aria-label="start">▶</button>
+      <button class="ico ghost" id="resetBtn" aria-label="reset">↺</button>
     </div>
-    <div class="count" id="count">Завершено помидоров: 0</div>
   </div>
 
-  <!-- Token setup (shown until a token is saved) -->
   <div class="card setup" id="setup">
-    <h2>Подключение заметки</h2>
-    <p>Заметка хранится в твоём приватном GitHub Gist и синхронизируется между устройствами.
-       Нужен токен с правом <b>gist</b> (создаётся в один клик):</p>
-    <p><a id="makeToken" href="https://github.com/settings/tokens/new?scopes=gist&description=pomodoro-note" target="_blank" rel="noopener">→ создать токен (scope: gist)</a>, скопируй и вставь сюда:</p>
-    <input id="patInput" type="password" placeholder="ghp_… или github_pat_…" autocomplete="off" spellcheck="false">
-    <div class="row">
-      <button class="btn btn-primary" id="saveTokenBtn">Подключить</button>
-      <span class="status" id="setupStatus"></span>
-    </div>
-    <div class="hint">Токен хранится только в этом браузере (localStorage). На другом устройстве введи тот же токен — заметка подтянется.</div>
+    <input id="patInput" type="password" placeholder="ghp_…" autocomplete="off" spellcheck="false">
+    <button class="ico primary" id="saveTokenBtn" aria-label="ok">→</button>
+    <span class="dot" id="setupDot"></span>
   </div>
 
-  <!-- Note (shown once connected) -->
   <div class="card note hidden" id="noteCard">
-    <div class="note-head">
-      <h2>Комментарий</h2>
-      <div class="status" id="status"><span class="dot"></span><span id="statusText">…</span></div>
-    </div>
-    <textarea id="note" placeholder="Вставляй сюда любой объём текста — автосохранение в Gist, доступно с любого устройства с тем же токеном." spellcheck="false" disabled></textarea>
-    <div class="hint">Автосохранение. Сабмит не нужен. При возврате во вкладку подтягивается свежая версия.</div>
+    <span class="dot" id="statusDot"></span>
+    <textarea id="note" spellcheck="false" disabled></textarea>
   </div>
 
 <script>
-// ===================== Pomodoro timer =====================
 const display=document.getElementById('display'), startBtn=document.getElementById('startBtn'),
-      resetBtn=document.getElementById('resetBtn'), modes=document.querySelectorAll('.mode'),
-      countEl=document.getElementById('count');
-let total=25*60, remaining=total, ticking=null, completed=0;
+      resetBtn=document.getElementById('resetBtn'), modes=document.querySelectorAll('.mode');
+let total=25*60, remaining=total, ticking=null;
 const fmt=s=>`${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
-function render(){ display.textContent=fmt(remaining); document.title=(ticking?'▶ ':'')+fmt(remaining)+' · Помодоро'; }
-function stop(){ clearInterval(ticking); ticking=null; startBtn.textContent='Старт'; display.classList.remove('running'); render(); }
-function start(){ if(ticking){stop();return;} startBtn.textContent='Пауза'; display.classList.add('running');
+function render(){ display.textContent=fmt(remaining); document.title=(ticking?'▶ ':'')+fmt(remaining); }
+function stop(){ clearInterval(ticking); ticking=null; startBtn.textContent='▶'; display.classList.remove('running'); render(); }
+function start(){ if(ticking){stop();return;} startBtn.textContent='❚❚'; display.classList.add('running');
   const end=Date.now()+remaining*1000;
   ticking=setInterval(()=>{ remaining=Math.max(0,Math.round((end-Date.now())/1000)); render();
-    if(remaining<=0){ stop(); completed++; countEl.textContent='Завершено помидоров: '+completed; beep();
-      if(window.Notification && Notification.permission==='granted') new Notification('Помодоро',{body:'Время вышло!'}); } },250); }
+    if(remaining<=0){ stop(); beep();
+      if(window.Notification && Notification.permission==='granted') new Notification('⏰'); } },250); }
 function reset(){ stop(); remaining=total; render(); }
 startBtn.onclick=()=>{ if(window.Notification && Notification.permission==='default') Notification.requestPermission(); start(); };
 resetBtn.onclick=reset;
@@ -125,77 +99,66 @@ function beep(){ try{ const c=new(window.AudioContext||window.webkitAudioContext
   g.gain.exponentialRampToValueAtTime(.0001,c.currentTime+.9); o.start(); o.stop(c.currentTime+.9);}catch(e){} }
 render();
 
-// ===================== Gist-backed note =====================
 const API='https://api.github.com', FILE='pomodoro-note.md', DESC='pomodoro-timer-note (auto)';
+const EMPTY='\u200b';
 const setup=document.getElementById('setup'), noteCard=document.getElementById('noteCard'),
-      note=document.getElementById('note'), statusEl=document.getElementById('status'),
-      statusText=document.getElementById('statusText'), setupStatus=document.getElementById('setupStatus'),
-      patInput=document.getElementById('patInput'), saveTokenBtn=document.getElementById('saveTokenBtn'),
-      forgetBtn=document.getElementById('forgetBtn');
+      note=document.getElementById('note'), statusDot=document.getElementById('statusDot'),
+      setupDot=document.getElementById('setupDot'), patInput=document.getElementById('patInput'),
+      saveTokenBtn=document.getElementById('saveTokenBtn'), forgetBtn=document.getElementById('forgetBtn');
 let pat=localStorage.getItem('gh_pat')||'', gistId=localStorage.getItem('gist_id')||'';
 let lastSaved='', saveTimer=null, inFlight=false;
 
-function setStatus(k,t){ statusEl.className='status '+k; statusText.textContent=t; }
+function setDot(k){ statusDot.className='dot '+(k||''); }
 
 async function gh(path,opts={}){
-  const res=await fetch(API+path,{...opts,headers:{'Authorization':'token '+pat,'Accept':'application/vnd.github+json',...(opts.headers||{})}});
+  const res=await fetch(API+path,{...opts,headers:{
+    'Authorization':'token '+pat,'Accept':'application/vnd.github+json','Content-Type':'application/json',...(opts.headers||{})}});
   if(res.status===401) throw new Error('401');
-  if(!res.ok) throw new Error('HTTP '+res.status);
+  if(!res.ok){ let m=''; try{ m=(await res.json()).message||''; }catch(e){} throw new Error('HTTP '+res.status+(m?' '+m:'')); }
   return res.status===204?null:res.json();
 }
-
 async function resolveGist(){
   if(gistId){ try{ const g=await gh('/gists/'+gistId); if(g&&g.files&&g.files[FILE]) return; }catch(e){ if(e.message==='401') throw e; } }
   const list=await gh('/gists?per_page=100');
   const found=list.find(g=>g.files&&g.files[FILE]);
   if(found){ gistId=found.id; }
-  else { const c=await gh('/gists',{method:'POST',body:JSON.stringify({description:DESC,public:false,files:{[FILE]:{content:' '}}})}); gistId=c.id; }
+  else { const c=await gh('/gists',{method:'POST',body:JSON.stringify({description:DESC,public:false,files:{[FILE]:{content:EMPTY}}})}); gistId=c.id; }
   localStorage.setItem('gist_id',gistId);
 }
-
 async function loadNote(){
-  const g=await gh('/gists/'+gistId); const f=g.files[FILE];
-  let c='';
-  if(f){ if(f.truncated && f.raw_url){ c=await (await fetch(f.raw_url,{headers:{'Authorization':'token '+pat}})).text(); }
-         else c=f.content||''; }
-  if(c===' ') c='';
-  note.value=c; lastSaved=c;
+  const g=await gh('/gists/'+gistId); const f=g.files[FILE]; let c='';
+  if(f){ if(f.truncated && f.raw_url){ c=await (await fetch(f.raw_url,{headers:{'Authorization':'token '+pat}})).text(); } else c=f.content||''; }
+  if(c===EMPTY||c===' ') c=''; note.value=c; lastSaved=c;
 }
-
 async function save(){
-  if(inFlight) return;
-  const text=note.value;
-  if(text===lastSaved){ setStatus('ok','сохранено'); return; }
-  inFlight=true; setStatus('saving','сохранение…');
-  try{
-    await gh('/gists/'+gistId,{method:'PATCH',body:JSON.stringify({files:{[FILE]:{content:text.length?text:' '}}})});
-    lastSaved=text; setStatus('ok','сохранено');
-  }catch(e){ setStatus('err', e.message==='401'?'токен отклонён':'ошибка сохранения'); if(e.message==='401') showSetup(); }
+  if(inFlight) return; const text=note.value;
+  if(text===lastSaved){ setDot('ok'); return; }
+  inFlight=true; setDot('saving');
+  try{ await gh('/gists/'+gistId,{method:'PATCH',body:JSON.stringify({files:{[FILE]:{content:text.length?text:EMPTY}}})}); lastSaved=text; setDot('ok'); }
+  catch(e){ setDot('err'); if(e.message==='401') showSetup(); }
   finally{ inFlight=false; if(note.value!==lastSaved) schedule(500); }
 }
-function schedule(d=900){ setStatus('saving','печатаю…'); clearTimeout(saveTimer); saveTimer=setTimeout(save,d); }
-
+function schedule(d=900){ setDot('saving'); clearTimeout(saveTimer); saveTimer=setTimeout(save,d); }
 note.addEventListener('input',()=>schedule(900));
 note.addEventListener('blur',()=>{ clearTimeout(saveTimer); save(); });
 function flush(){ if(note.value===lastSaved||!gistId) return;
   try{ fetch(API+'/gists/'+gistId,{method:'PATCH',keepalive:true,
-    headers:{'Authorization':'token '+pat,'Accept':'application/vnd.github+json'},
-    body:JSON.stringify({files:{[FILE]:{content:note.value.length?note.value:' '}}})}); lastSaved=note.value; }catch(e){} }
+    headers:{'Authorization':'token '+pat,'Accept':'application/vnd.github+json','Content-Type':'application/json'},
+    body:JSON.stringify({files:{[FILE]:{content:note.value.length?note.value:EMPTY}}})}); lastSaved=note.value; }catch(e){} }
 window.addEventListener('beforeunload',flush);
 document.addEventListener('visibilitychange',()=>{ if(document.hidden){flush();return;}
   if(gistId && note.value===lastSaved && document.activeElement!==note) loadNote().catch(()=>{}); });
 
-function showSetup(){ setup.classList.remove('hidden'); noteCard.classList.add('hidden'); note.disabled=true; }
+function showSetup(){ setup.classList.remove('hidden'); noteCard.classList.add('hidden'); forgetBtn.classList.add('hidden'); note.disabled=true; }
 async function connect(){
-  noteCard.classList.remove('hidden'); note.disabled=true; setStatus('saving','подключение…');
-  try{ await resolveGist(); await loadNote(); note.disabled=false; setStatus('ok','синхронизировано'); setup.classList.add('hidden'); }
-  catch(e){ if(e.message==='401'){ setupStatus.className='status err'; setupStatus.textContent='токен не принят'; showSetup(); }
-            else setStatus('err','нет связи'); }
+  noteCard.classList.remove('hidden'); forgetBtn.classList.remove('hidden'); note.disabled=true; setDot('saving');
+  try{ await resolveGist(); await loadNote(); note.disabled=false; setDot('ok'); setup.classList.add('hidden'); }
+  catch(e){ if(e.message==='401'){ setupDot.className='dot err'; showSetup(); } else setDot('err'); }
 }
-
 saveTokenBtn.onclick=()=>{ const v=patInput.value.trim(); if(!v) return;
-  pat=v; localStorage.setItem('gh_pat',pat); patInput.value=''; setupStatus.textContent='';
+  pat=v; localStorage.setItem('gh_pat',pat); patInput.value=''; setupDot.className='dot';
   gistId=localStorage.getItem('gist_id')||''; connect(); };
+patInput.addEventListener('keydown',e=>{ if(e.key==='Enter') saveTokenBtn.onclick(); });
 forgetBtn.onclick=()=>{ localStorage.removeItem('gh_pat'); localStorage.removeItem('gist_id');
   pat=''; gistId=''; note.value=''; lastSaved=''; showSetup(); };
 
