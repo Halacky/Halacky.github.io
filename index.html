@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -149,5 +148,32 @@ async function save(){
   catch(e){ setDot('err'); if(e.message==='401') showSetup(); }  // ошибка/403: НЕ зацикливаемся, ждём следующего ввода
   finally{ inFlight=false; }
 }
-function schedule(d=2000){ setDot('savi
-                                  
+function schedule(d=2000){ setDot('saving'); clearTimeout(saveTimer); saveTimer=setTimeout(save,d); }
+
+note.addEventListener('input',()=>schedule(2000));
+note.addEventListener('blur',()=>{ clearTimeout(saveTimer); save(); });
+function flush(){ if(note.value===lastSaved||!gistId) return;
+  try{ fetch(API+'/gists/'+gistId,{method:'PATCH',keepalive:true,
+    headers:{'Authorization':'token '+pat,'Accept':'application/vnd.github+json','Content-Type':'application/json'},
+    body:JSON.stringify({files:{[FILE]:{content:note.value.length?note.value:EMPTY}}})}); lastSaved=note.value; }catch(e){} }
+window.addEventListener('beforeunload',flush);
+document.addEventListener('visibilitychange',()=>{ if(document.hidden){flush();return;}
+  if(gistId && note.value===lastSaved && document.activeElement!==note) loadNote().catch(()=>{}); });
+
+function showSetup(){ setup.classList.remove('hidden'); noteCard.classList.add('hidden'); forgetBtn.classList.add('hidden'); note.disabled=true; }
+async function connect(){
+  noteCard.classList.remove('hidden'); forgetBtn.classList.remove('hidden'); note.disabled=true; setDot('saving');
+  try{ await resolveGist(); await loadNote(); note.disabled=false; setDot('ok'); setup.classList.add('hidden'); }
+  catch(e){ if(e.message==='401'){ setupDot.className='dot err'; showSetup(); } else setDot('err'); }
+}
+saveTokenBtn.onclick=()=>{ const v=patInput.value.trim(); if(!v) return;
+  pat=v; localStorage.setItem('gh_pat',pat); patInput.value=''; setupDot.className='dot';
+  gistId=localStorage.getItem('gist_id')||''; connect(); };
+patInput.addEventListener('keydown',e=>{ if(e.key==='Enter') saveTokenBtn.onclick(); });
+forgetBtn.onclick=()=>{ localStorage.removeItem('gh_pat'); localStorage.removeItem('gist_id');
+  pat=''; gistId=''; note.value=''; lastSaved=''; showSetup(); };
+
+if(pat) connect(); else showSetup();
+</script>
+</body>
+</html>
