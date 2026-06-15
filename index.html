@@ -127,7 +127,7 @@ async function resolveGist(){
 }
 async function loadNote(){
   const g=await gh('/gists/'+gistId); const f=g.files[FILE]; let c='';
-  if(f){ if(f.truncated && f.raw_url){ c=await (await fetch(f.raw_url,{headers:{'Authorization':'token '+pat}})).text(); } else c=f.content||''; }
+  if(f){ if(f.truncated && f.raw_url){ c=await (await fetch(f.raw_url)).text(); } else c=f.content||''; }
   if(c===EMPTY||c===' ') c=''; note.value=c; lastSaved=c;
 }
 async function save(){
