@@ -99,11 +99,12 @@ function beep(){ try{ const c=new(window.AudioContext||window.webkitAudioContext
   g.gain.exponentialRampToValueAtTime(.0001,c.currentTime+.9); o.start(); o.stop(c.currentTime+.9);}catch(e){} }
 render();
 
-// ===================== Gist-backed note =====================
+// ===================== Gist-backed note (gzip + локальный кэш) =====================
 const API='https://api.github.com', FILE='pomodoro-note.md', DESC='pomodoro-timer-note (auto)';
-const EMPTY='\u200b'; // zero-width space: непустой плейсхолдер (пробел GitHub отвергает как 422)
-// Лимит GitHub gist_update = 100 PATCH/час. Сохраняем не чаще раза в MIN_GAP (+ flush при уходе со страницы).
-const DEBOUNCE=5000, MIN_GAP=60000;
+const EMPTY='\u200b';                 // непустой плейсхолдер для пустой заметки (пробел GitHub отвергает как 422)
+const CACHE='pomodoro_note_cache';    // локальная копия для мгновенной загрузки
+const DEBOUNCE=5000, MIN_GAP=60000;   // лимит GitHub gist_update=100/час -> сохраняем не чаще раза в 60с (+ при уходе)
+const CAN_GZIP=(typeof CompressionStream!=='undefined' && typeof DecompressionStream!=='undefined');
 const setup=document.getElementById('setup'), noteCard=document.getElementById('noteCard'),
       note=document.getElementById('note'), statusDot=document.getElementById('statusDot'),
       setupDot=document.getElementById('setupDot'), patInput=document.getElementById('patInput'),
@@ -112,6 +113,26 @@ let pat=localStorage.getItem('gh_pat')||'', gistId=localStorage.getItem('gist_id
 let lastSaved='', saveTimer=null, inFlight=false, lastSaveAt=0;
 
 function setDot(k){ statusDot.className='dot '+(k||''); }
+function cacheGet(){ try{ return localStorage.getItem(CACHE)||''; }catch(e){ return ''; } }
+function cacheSet(t){ try{ localStorage.setItem(CACHE,t); }catch(e){} }
+
+// ---- gzip <-> base64 (без потерь; на выходе ровно исходный текст) ----
+function bytesToB64(b){ let s='', C=0x8000; for(let i=0;i<b.length;i+=C) s+=String.fromCharCode.apply(null,b.subarray(i,i+C)); return btoa(s); }
+function b64ToBytes(s){ const bin=atob(s), o=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) o[i]=bin.charCodeAt(i); return o; }
+async function encode(text){
+  if(!text) return EMPTY;
+  if(!CAN_GZIP) return text;                                  // старый браузер -> плейнтекст
+  const cs=new CompressionStream('gzip');
+  const buf=await new Response(new Blob([new TextEncoder().encode(text)]).stream().pipeThrough(cs)).arrayBuffer();
+  return 'GZIP:'+bytesToB64(new Uint8Array(buf));
+}
+async function decode(raw){
+  if(!raw || raw===EMPTY || raw===' ') return '';
+  if(typeof raw!=='string' || !raw.startsWith('GZIP:')) return raw;   // старый плейнтекст читается как есть
+  const ds=new DecompressionStream('gzip');
+  const buf=await new Response(new Blob([b64ToBytes(raw.slice(5))]).stream().pipeThrough(ds)).arrayBuffer();
+  return new TextDecoder().decode(buf);
+}
 
 async function gh(path,opts={}){
   const res=await fetch(API+path,{...opts,headers:{
@@ -131,52 +152,60 @@ async function resolveGist(){
 }
 
 async function loadNote(){
-  const g=await gh('/gists/'+gistId); const f=g.files[FILE]; let c='';
-  // большие файлы (>1МБ) приходят truncated -> тянем raw_url БЕЗ заголовков (он CORS-*, токен не нужен;
-  // с Authorization был бы preflight, который gist.githubusercontent.com отдаёт 403)
-  if(f){ if(f.truncated && f.raw_url){ c=await (await fetch(f.raw_url)).text(); } else c=f.content||''; }
-  if(c===EMPTY||c===' ') c=''; note.value=c; lastSaved=c;
+  const g=await gh('/gists/'+gistId); const f=g.files[FILE]; let raw='';
+  // если файл всё же >1МБ (сжатого) — приходит truncated, тянем raw_url БЕЗ заголовков (CORS-*, токен не нужен)
+  if(f){ raw=(f.truncated && f.raw_url) ? await (await fetch(f.raw_url)).text() : (f.content||''); }
+  const c=await decode(raw);
+  note.value=c; lastSaved=c; cacheSet(c);
+}
+
+async function patch(text){
+  const payload=await encode(text);
+  await gh('/gists/'+gistId,{method:'PATCH',body:JSON.stringify({files:{[FILE]:{content:payload}}})});
 }
 
 async function save(){
   if(inFlight) return;
   if(note.value===lastSaved){ setDot('ok'); return; }
   const wait=MIN_GAP-(Date.now()-lastSaveAt);
-  if(wait>0){ schedule(wait); return; }            // слишком часто -> отложить (защита от лимита gist_update=100/час)
+  if(wait>0){ schedule(wait); return; }            // слишком часто -> отложить (защита от лимита gist_update)
   inFlight=true; setDot('saving'); const text=note.value;
   try{
-    await gh('/gists/'+gistId,{method:'PATCH',body:JSON.stringify({files:{[FILE]:{content:text.length?text:EMPTY}}})});
-    lastSaved=text; lastSaveAt=Date.now(); setDot('ok');
-    if(note.value!==lastSaved) schedule(DEBOUNCE);  // новые правки во время сохранения (ТОЛЬКО при успехе)
+    await patch(text); lastSaved=text; lastSaveAt=Date.now(); cacheSet(text); setDot('ok');
+    if(note.value!==lastSaved) schedule(DEBOUNCE);  // правки во время сохранения (ТОЛЬКО при успехе)
   }
-  catch(e){ setDot('err'); if(e.message==='401') showSetup(); }  // ошибка/403: НЕ зацикливаемся, ждём ввода
+  catch(e){ setDot('err'); if(e.message==='401') showSetup(); }  // ошибка/403: не зацикливаемся
+  finally{ inFlight=false; }
+}
+async function forceSave(){   // при уходе со страницы/переключении вкладки — без троттла (события редкие)
+  if(inFlight || !gistId || note.value===lastSaved) return;
+  inFlight=true; const text=note.value;
+  try{ await patch(text); lastSaved=text; lastSaveAt=Date.now(); cacheSet(text); setDot('ok'); }
+  catch(e){ setDot('err'); }
   finally{ inFlight=false; }
 }
 function schedule(d){ setDot('saving'); clearTimeout(saveTimer); saveTimer=setTimeout(save,d); }
 
 note.addEventListener('input',()=>schedule(DEBOUNCE));
 note.addEventListener('blur',()=>{ clearTimeout(saveTimer); save(); });
-// при уходе со страницы / переключении вкладки — сохранить сразу (события редкие, лимит не выжигают)
-function flush(){ if(note.value===lastSaved||!gistId) return;
-  try{ fetch(API+'/gists/'+gistId,{method:'PATCH',keepalive:true,
-    headers:{'Authorization':'token '+pat,'Accept':'application/vnd.github+json','Content-Type':'application/json'},
-    body:JSON.stringify({files:{[FILE]:{content:note.value.length?note.value:EMPTY}}})});
-    lastSaved=note.value; lastSaveAt=Date.now(); }catch(e){} }
-window.addEventListener('beforeunload',flush);
-document.addEventListener('visibilitychange',()=>{ if(document.hidden){flush();return;}
-  if(gistId && note.value===lastSaved && document.activeElement!==note) loadNote().catch(()=>{}); });
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){ forceSave(); return; }                 // ушёл со страницы -> сохранить сразу
+  if(gistId && note.value===lastSaved && document.activeElement!==note) loadNote().catch(()=>{}); // вернулся -> подтянуть свежее
+});
 
 function showSetup(){ setup.classList.remove('hidden'); noteCard.classList.add('hidden'); forgetBtn.classList.add('hidden'); note.disabled=true; }
 async function connect(){
   noteCard.classList.remove('hidden'); forgetBtn.classList.remove('hidden'); note.disabled=true; setDot('saving');
+  const cached=cacheGet(); if(cached){ note.value=cached; lastSaved=cached; }   // мгновенный предпросмотр из кэша
   try{ await resolveGist(); await loadNote(); note.disabled=false; setDot('ok'); setup.classList.add('hidden'); }
-  catch(e){ if(e.message==='401'){ setupDot.className='dot err'; showSetup(); } else setDot('err'); }
+  catch(e){ if(e.message==='401'){ setupDot.className='dot err'; showSetup(); }
+            else { setDot('err'); if(cached) note.disabled=false; } }   // нет сети, но кэш есть -> дай работать
 }
 saveTokenBtn.onclick=()=>{ const v=patInput.value.trim(); if(!v) return;
   pat=v; localStorage.setItem('gh_pat',pat); patInput.value=''; setupDot.className='dot';
   gistId=localStorage.getItem('gist_id')||''; connect(); };
 patInput.addEventListener('keydown',e=>{ if(e.key==='Enter') saveTokenBtn.onclick(); });
-forgetBtn.onclick=()=>{ localStorage.removeItem('gh_pat'); localStorage.removeItem('gist_id');
+forgetBtn.onclick=()=>{ localStorage.removeItem('gh_pat'); localStorage.removeItem('gist_id'); localStorage.removeItem(CACHE);
   pat=''; gistId=''; note.value=''; lastSaved=''; showSetup(); };
 
 if(pat) connect(); else showSetup();
